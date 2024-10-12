@@ -1,5 +1,12 @@
 const fs = require('fs/promises');
 const path = require('path');
+const User = require('../../db/user')
+const bcrypt = require('bcrypt');
+
+const mongodb = require('../../db/mongo')
+
+const signToken = _id => JsonWebTokenError.sign({_id}, 'mi-string-secreto')
+
 
 const getAllSignos = async (req, res)=>{
     const signo = await fs.readFile(path.join(__dirname,'../../db/signos.json'));
@@ -43,24 +50,29 @@ const validarCredenciales = async (req, res)=>{
    
    const {username,password} = req.body;
    try{
-    
-    const allnuevoAdmin = await fs.readFile(path.join(__dirname,'../../db/Admin.json'));
-    const objnuevoAdmin = JSON.parse(allnuevoAdmin);
-   
-    const allnuevoUser = await fs.readFile(path.join(__dirname,'../../db/user.json'));
-    const objnuevoUser = JSON.parse(allnuevoUser);
-   
-    
- 
-    
-    if (objnuevoUser[username] && objnuevoUser[username] === password ) {
-        return res.status(200).json("user");
-    } else if (objnuevoAdmin[username] && objnuevoAdmin[username] === password) {
-        return res.status(200).json("admin");
-    } else {
-        
-        return res.status(401).json("Credenciales incorrectas");
+
+    const user = await User.findOne({email: username})
+
+    if (!user){
+        res.status(403).send('usuario o contaseña invalida')
+    }else{
+
+        const isMatch =await bcrypt.compare(password, user.password)
+        if (isMatch){
+
+          if(user.rol === 'user'){
+
+            res.json('user')
+        }else{
+            
+            res.json('admin')
+         
+          }
+
+        }
     }
+
+    
 } catch (error) {
     console.error('Error al leer las credenciales:', error);
     return res.status(500).json({ message: "Error en el servidor" });
@@ -70,36 +82,32 @@ const validarCredenciales = async (req, res)=>{
 
 const registroCredenciales = async (req, res)=>{
   
-    const {rol,...addcredenciales} = req.body;
-    const allnuevoAdmin = await fs.readFile(path.join(__dirname,'../../db/Admin.json'));
-    const objnuevoAdmin = JSON.parse(allnuevoAdmin);
-   
-    const allnuevoUser = await fs.readFile(path.join(__dirname,'../../db/user.json'));
-    const objnuevoUser = JSON.parse(allnuevoUser);
-    const {user} = addcredenciales;
-    const {password} = addcredenciales;
+    const {...addcredenciales} = req.body;
 
-  
+    console.log(addcredenciales)
 
+    const {email} = addcredenciales
+    const {password} = addcredenciales
+    const {rol} = addcredenciales
     
-    if (!objnuevoUser[user] && objnuevoAdmin[user]=== undefined){
-
-        if(rol=== "user"){
-
-            objnuevoUser[user] = password;
-            const objUpdateuser = { ...objnuevoUser };
-            await fs.writeFile(path.join(__dirname, '../../db/user.json'), JSON.stringify(objUpdateuser, null, 2), 'utf-8');
-            return res.json("se creo usuario Generico")
-        }else{
-
-            objnuevoAdmin[user] = password;
-            const objUpdateuser = { ...objnuevoAdmin };
-            await fs.writeFile(path.join(__dirname, '../../db/Admin.json'), JSON.stringify(objUpdateuser, null, 2), 'utf-8');
-            return res.json("se creo usuario de administrador")
-
+    console.log(email)
+    console.log(password)
+    
+    try{
+        const isUser = await User.findOne({email: email})
+        if(isUser){
+            return res.status(403).send('usuario ya existe')
         }
-    }else{
-    return res.json("usuario ya existe ") }
+
+        const salt = await  bcrypt.genSalt()
+        const hashed = await bcrypt.hash(password, salt)
+        const user = await User.create({rol:rol, email:email, password: hashed,salt})
+    }catch(err){
+
+        console.log(err)
+        res.status(500).send(err.message)
+
+    }
     
     
 
