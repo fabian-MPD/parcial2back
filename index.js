@@ -20,6 +20,8 @@ app.use(urlencoded({extended: true}))
 app.use(cors())
 app.use('/v1/signos', router);
 
+
+
 app.listen(port, ()=>{
     console.log('listening at port 4000');
 })
