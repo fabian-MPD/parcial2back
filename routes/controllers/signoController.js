@@ -70,41 +70,27 @@ const User = require('../../db/user');
   
 const upload = multer({ storage: multer.memoryStorage() });
 
-// Manejo de fragmentos
 const SubirVideoPorPartes = async (req, res) => {
   try {
-    const { fileId, chunkIndex, totalChunks, newName } = req.body; // Información del cliente
-    const chunk = req.file; // Archivo fragmentado
-    const tempDir = path.join(__dirname, '../../uploads', fileId); // Directorio temporal
+    const { fileId, chunkIndex, totalChunks, newName } = req.body;
+    const chunk = req.file;
+    const tempDir = path.join(__dirname, '../../uploads', fileId);
 
-    if (!chunk) {
-      return res.status(400).json({ error: 'No se recibió ningún fragmento.' });
+    if (!fileId || chunkIndex == null || !totalChunks || !chunk) {
+      return res.status(400).json({ error: 'Información incompleta o fragmento faltante.' });
     }
 
-    // Crear directorio temporal si no existe
     await fs.mkdir(tempDir, { recursive: true });
-
-    // Guardar fragmento en el directorio temporal
     const chunkPath = path.join(tempDir, `${chunkIndex}`);
     await fs.writeFile(chunkPath, chunk.buffer);
 
-    // Comprobar si todos los fragmentos han sido recibidos
     if (parseInt(chunkIndex) === parseInt(totalChunks) - 1) {
       const fileName = newName ? `${newName}.mp4` : `${fileId}.mp4`;
       const uniqueKey = `videos/${Date.now()}-${fileName}`;
       const combinedPath = path.join(tempDir, 'combined.mp4');
 
-      // Combinar fragmentos
-      const writeStream = await fs.open(combinedPath, 'w');
-      for (let i = 0; i < totalChunks; i++) {
-        const partPath = path.join(tempDir, `${i}`);
-        const data = await fs.readFile(partPath);
-        await writeStream.write(data);
-        await fs.unlink(partPath); // Eliminar el fragmento después de usarlo
-      }
-      await writeStream.close();
+      await combineChunks(tempDir, totalChunks, combinedPath);
 
-      // Subir archivo combinado a AWS S3
       const fileBuffer = await fs.readFile(combinedPath);
       const params = {
         Bucket: process.env.AWS_BUCKET_NAME,
@@ -116,7 +102,6 @@ const SubirVideoPorPartes = async (req, res) => {
       const command = new PutObjectCommand(params);
       await s3Client.send(command);
 
-      // Guardar información del video en MongoDB
       const videonew = new Video({
         url: `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${uniqueKey}`,
         filename: fileName,
@@ -125,21 +110,15 @@ const SubirVideoPorPartes = async (req, res) => {
       });
       await videonew.save();
 
-      // Limpiar directorio temporal
-      await fs.rmdir(tempDir, { recursive: true });
+      await cleanUpTempDir(tempDir);
 
-      res.json({
-        message: 'Video subido exitosamente',
-        video: videonew,
-      });
+      res.json({ message: 'Video subido exitosamente', video: videonew });
     } else {
-      res.status(200).json({
-        message: `Fragmento ${chunkIndex} recibido exitosamente.`,
-      });
+      res.status(200).json({ message: `Fragmento ${chunkIndex} recibido.` });
     }
   } catch (error) {
-    console.error('Error al subir el video por partes:', error);
-    res.status(500).json({ error: 'Error al subir el video por partes' });
+    console.error('Error al subir video por partes:', error);
+    res.status(500).json({ error: 'Error al subir el video por partes.' });
   }
 };
 
