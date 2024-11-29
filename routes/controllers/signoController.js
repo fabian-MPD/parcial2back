@@ -35,16 +35,19 @@ const SubirVideoPorPartes = async (req, res) => {
         console.log("llega2");
         // Parámetros para la subida del archivo a S3
         const params = {
-            Bucket: process.env.AWS_BUCKET_NAME, // Nombre del bucket
+            Bucket: process.env.AWS_BUCKET_NAME || "salbarsemestre", 
+            
             Key: uniqueKey, // Nombre único del archivo en S3
             Body: file.buffer, // El contenido del archivo
             ContentType: file.mimetype, // Tipo MIME del archivo
         };
+        console.log(params);
         console.log("llega3");
         
         // Subir el archivo a S3 usando PutObjectCommand
         const command = new PutObjectCommand(params);
         const uploadResult = await s3Client.send(command);
+        console.log("llega6");
         
         // Guardar la URL del video en MongoDB
         const videonew = new Video({
