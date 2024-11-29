@@ -1,20 +1,115 @@
+
 const fs = require('fs/promises');
 const path = require('path');
-const User = require('../../db/user')
-const modeCodigo = require('../../db/codigo')
-const regisCodigo = require('../../db/registroCodigo')
 const moment = require('moment-timezone');
-
 const bcrypt = require('bcrypt');
+const AWS = require('@aws-sdk/client-s3');  // Correcto para AWS SDK v3
+const multer = require('multer');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');  // Importación correcta de AWS SDK v3
+const Video = require('../../db/Multimedia');
+const s3Client = require('../../db/awsS3');  // Asegúrate de tener la conexión de AWS configurada correctamente
+const User = require('../../db/user');
 
-const mongodb = require('../../db/mongo')
+// Configuración de Multer
+const upload = multer({ storage: multer.memoryStorage() });
 
-const signToken = _id => JsonWebTokenError.sign({_id}, 'mi-string-secreto')
+const Subirvideo = async (req, res) => {
+    try {
+      const file = req.file; // Accede al archivo subido
+      const { newName } = req.body; // Obtén el nuevo nombre desde el cliente
+      const {iduser} = req.params;
+
+      console.log("ingrese");
 
 
+  
+      if (!file) {
+        return res.status(400).json({ error: 'No se ha subido ningún archivo' });
+      }
+  
+      // Generar un nombre único para el archivo o usar el proporcionado por el cliente
+      const fileName = newName ? `${newName}.mp4` : file.originalname;
+      const uniqueKey = `videos/${Date.now()}-${fileName}`;
+  
+      // Parámetros para la subida del archivo a S3
+      const params = {
+        Bucket: process.env.AWS_BUCKET_NAME, // Nombre del bucket
+        Key: uniqueKey, // Nombre único del archivo en S3
+        Body: file.buffer, // El contenido del archivo
+        ContentType: file.mimetype, // Tipo MIME del archivo
+      };
+  
+      // Subir el archivo a S3 usando PutObjectCommand
+      const command = new PutObjectCommand(params);
+      const uploadResult = await s3Client.send(command);
+  
+      // Guardar la URL del video en MongoDB
+      const videonew = new Video({
+        url: `https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${uniqueKey}`,
+        filename: fileName, // Guardar el nombre renombrado
+        usuario: iduser,
+        fechaSubida: new Date(),
+      });
+      await videonew.save();
+  
+      // Responder con la URL del video subido
+     /* res.json({
+        message: 'Video subido exitosamente',
+        url: video.url,
+        id:iduser,
+      });*/
+      console.log(videonew)
+
+      res.json([videonew])
+
+    } catch (error) {
+      console.error('Error al subir el video:', error);
+      res.status(500).json({ error: 'Error al subir el video' });
+    }
+  };
+  
 
 
+  const videos = async (req, res) => {
+    try {
+        // Obtener todos los videos de la base de datos
+        const todosLosVideos = await Video.find({}).sort({ fechaSubida: -1 });
 
+        if (todosLosVideos.length > 0) {
+            console.log("Videos encontrados:", todosLosVideos);
+        } else {
+            console.log("No se encontraron videos.");
+        }
+
+        // Enviar la lista de videos al cliente
+        res.json(todosLosVideos);
+    } catch (error) {
+        console.error("Error al obtener los videos:", error);
+        res.status(500).json({ error: "Error al obtener los videos" });
+    }
+};
+
+const buscarvideos = async (req, res) => {
+    try {
+        const {nombre} = req.body
+        // Obtener todos los videos de la base de datos
+        const Video = await Video.findOne({ filename:nombre})
+
+        if (Video.length > 0) {
+            console.log("Videos encontrados:", Video);
+        } else {
+            console.log("No se encontraron videos.");
+        }
+
+        // Enviar la lista de videos al cliente
+        res.json(Video);
+    } catch (error) {
+        console.error("Error al obtener los videos:", error);
+        res.status(500).json({ error: "Error al obtener los videos" });
+    }
+};
+
+  
 const validarCredenciales = async (req, res)=>{
    //const {categoria,signoEditar} = req.params;
 
@@ -306,5 +401,9 @@ module.exports = {
     ganadores,
     renderizar,
     generarCodigo,
+    Subirvideo,
+    upload,
+    videos,
+    buscarvideos,
 
 }
