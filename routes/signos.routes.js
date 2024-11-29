@@ -17,7 +17,7 @@ router
     .get('/traer/:valor',signoController.ganadores)
     .get('/traerusuario/:iduser',signoController.renderizar)
     .post('/generar',signoController.generarCodigo)
-    .post('/upload/:iduser', upload.single('video'), signoController.Subirvideo)
+    .post('/upload/:iduser', upload.single('video'), signoController.SubirVideoPorPartes)
     .get('/videos',signoController.videos)
     .get('/nombre',signoController.buscarvideos)
     // .patch('/restablecer', signoController.editarContrasena)
